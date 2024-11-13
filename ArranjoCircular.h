@@ -10,12 +10,19 @@ private:
     int inicio = 0;
 
 public:
+    T pegarMedia() {
+        float soma = 0.0f;
+        for (int i = 0; i < TAM; i++) {
+            soma += arr[i];
+        }
+        return (T)(soma / (float)TAM);
+    }
     void inserir(const T& valor) {
         arr[inicio] = valor;
         inicio = (inicio + 1) % TAM;
     }
     T& operator[](int n) {
-        return arr[(inicio + n) % TAM];
+        return arr[(inicio + n + TAM) % TAM];
     }
 };
 

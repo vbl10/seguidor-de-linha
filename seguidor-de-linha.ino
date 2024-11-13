@@ -1,25 +1,33 @@
 #include "Filtro.h"
 #include "ArranjoCircular.h"
+#include "PID.h"
+#include "Encoder.h"
 
-#define PIN_MOTOR_DIR_A 9
-#define PIN_MOTOR_DIR_B 10
-#define PIN_MOTOR_ESQ_A 6
-#define PIN_MOTOR_ESQ_B 5
+#define PIN_MOTOR_ESQ_A 10
+#define PIN_MOTOR_ESQ_B 9
+#define PIN_MOTOR_DIR_A 6
+#define PIN_MOTOR_DIR_B 5
 
 #define PIN_BUZINA 11
 
 #define PIN_ULTRASSOM_ECHO 4
-#define PIN_ULTRASSOM_TRIG 3
+#define PIN_ULTRASSOM_TRIG 7
 
-#define PIN_LDR_DIR A0
+#define PIN_ENCODER_DIR 2
+#define PIN_ENCODER_ESQ 3
+
 #define PIN_LDR_ESQ A1
+#define PIN_LDR_DIR A0
+
+constexpr float pi = 3.14159f;
 
 constexpr float distanciaObstaculoMinima_cm = 40.0f;
 
-constexpr float velMax_un = 0.10f;
+constexpr float raioRoda_cm = 3.2f;
+constexpr float velMax_cmps = 10.0f;
 
-constexpr float sensibilidadeDeteccaoLinhaDir_un = 0.60f;
 constexpr float sensibilidadeDeteccaoLinhaEsq_un = 0.45f;
+constexpr float sensibilidadeDeteccaoLinhaDir_un = 0.45f;
 
 float distanciaObstaculo_cm = 0.0f;
 
@@ -29,6 +37,9 @@ DIRECAO direcao = DIRECAO::MANTER;
 
 bool ldrEsqSobreLinha = false;
 bool ldrDirSobreLinha = false;
+
+Encoder<PIN_ENCODER_ESQ> encoderEsq(20);
+Encoder<PIN_ENCODER_DIR> encoderDir(20);
 
 void setup() {
     Serial.begin(9600);
@@ -45,6 +56,9 @@ void setup() {
 
     pinMode(PIN_LDR_DIR, INPUT);
     pinMode(PIN_LDR_ESQ, INPUT);
+
+    encoderEsq.inicializar();
+    encoderDir.inicializar();
 }
 
 void loop() {
@@ -57,7 +71,7 @@ void loop() {
     {
         static long tempoUltimoToque_ms = 0;
         if (distanciaObstaculo_cm < distanciaObstaculoMinima_cm) {
-            if (millis() - tempoUltimoToque_ms >= 3000) {
+            if (millis() - tempoUltimoToque_ms >= 5000) {
                 tempoUltimoToque_ms = millis();
                 tone(PIN_BUZINA, 440, 250);
             }
@@ -87,7 +101,7 @@ void loop() {
 void tarefaSensorUltrassonico() {
     static constexpr int periodoAmostragem_ms = 30;
 
-    static Filtro<float, 20> filtro(distanciaObstaculo_cm);
+    static Filtro<float, 10> filtro(distanciaObstaculo_cm);
     static long tempoUltimaAmostra_ms = 0;
 
     if (millis() - tempoUltimaAmostra_ms >= periodoAmostragem_ms) {
@@ -115,102 +129,106 @@ void tarefaSensoresLDR() {
     ldrEsqSobreLinha = ldrEsq < sensibilidadeDeteccaoLinhaEsq_un;
 }
 
-static float velDir = 0.0f, velEsq = 0.0f;
+static PID 
+    pidVelEsq(0.2f, 4.0f, 0.1f, 1.0f, 0.0f, 1.0f, 0.0f), 
+    pidVelDir(0.3f, 4.0f, 0.1f, 1.0f, 0.0f, 1.0f, 0.0f);
+
 void tarefaControlarMotores() {
-    static unsigned long tempoUltimaChamada_us = 0;
-    static float ultimoVelDir = 0.0f, ultimoVelEsq = 0.0f;
-    
-    static constexpr int curvaVelT1 = 300, curvaVelT2 = 450;
+    static unsigned long tp0 = 0;
+    static float freqEsq = 0.0f, freqDir = 0.0f;
+    static Filtro<float, 8> filtroFreqEsq(freqEsq), filtroFreqDir(freqDir);
 
-    static long tempoUltimoEstadoDir = 0;
-    static bool ultimoEstadoDir = false;
-    static long tempoUltimoEstadoEsq = 0;
-    static bool ultimoEstadoEsq = false;
+    if (millis() - tp0 >= 10) {
+        tp0 += 10;
 
-    if (direcao != DIRECAO::DIREITA && avancar) {
-        if (!ultimoEstadoDir) {
-            ultimoEstadoDir = true;
-            tempoUltimoEstadoDir = millis();
-        }
-        if (millis() - tempoUltimoEstadoDir < curvaVelT1) {
-            velDir = 1.0f;
-        }
-        else if (millis() - tempoUltimoEstadoDir < curvaVelT2) {
-            float alpha = (float)(millis() - (tempoUltimoEstadoDir + curvaVelT1)) / (curvaVelT2 - curvaVelT1);
-            velDir = (1.0f - alpha) * 1.0f + alpha * velMax_un;
-        }
-        else {
-            velDir = velMax_un;
-        }
-    }
-    else {
-        velDir = 0.0f;
-        ultimoEstadoDir = false;
-    }
+        float freqCruDir = encoderDir.pegarFrequencia_Hz();
+        float freqCruEsq = encoderEsq.pegarFrequencia_Hz();
 
-    if (direcao != DIRECAO::ESQUERDA && avancar) {
-        if (!ultimoEstadoEsq) {
-            ultimoEstadoEsq = true;
-            tempoUltimoEstadoEsq = millis();
-        }
-        if (millis() - tempoUltimoEstadoEsq < curvaVelT1) {
-            velEsq = 1.0f;
-        }
-        else if (millis() - tempoUltimoEstadoEsq < curvaVelT2) {
-            float alpha = (float)(millis() - (tempoUltimoEstadoEsq + curvaVelT1)) / (curvaVelT2 - curvaVelT1);
-            velEsq = (1.0f - alpha) * 1.0f + alpha * velMax_un;
-        }
-        else {
-            velEsq = velMax_un;
-        }
-    }
-    else {
-        velEsq = 0.0f;
-        ultimoEstadoEsq = false;
-    }
+        filtroFreqDir.inserirAmostra(freqCruDir);
+        filtroFreqEsq.inserirAmostra(freqCruEsq);
 
-    if (velDir != ultimoVelDir) {
-        defVelMotorDireito(velDir);
-        ultimoVelDir = velDir;
-    }
-    if (velEsq != ultimoVelEsq) {
-        defVelMotorEsquerdo(velEsq);
-        ultimoVelEsq = velEsq;
+
+        pidVelDir.atualizar(
+            direcao != DIRECAO::DIREITA && avancar 
+                ? velMax_cmps / (2.0f * pi * raioRoda_cm) 
+                : 0.0f, 
+            freqDir
+        );
+        pidVelEsq.atualizar(
+            direcao != DIRECAO::ESQUERDA && avancar 
+                ? velMax_cmps / (2.0f * pi * raioRoda_cm) 
+                : 0.0f, 
+            freqEsq
+        );
+
+
+        defPotenciaMotorDireito(pidVelDir.c);
+        defPotenciaMotorEsquerdo(pidVelEsq.c);
     }
 }
-void defVelMotorDireito(float vel_un) {
-    analogWrite(PIN_MOTOR_DIR_A, vel_un * 255.0f);
-    digitalWrite(PIN_MOTOR_DIR_B, LOW);
+void defPotenciaMotorDireito(float pot_un) {
+    static float ultimoPot = 0.0f;
+    if (ultimoPot != pot_un) {
+        if (pot_un >= 0.0f) {
+            analogWrite(PIN_MOTOR_DIR_A, pot_un * 255.0f);
+            digitalWrite(PIN_MOTOR_DIR_B, LOW);
+        }
+        else {
+            analogWrite(PIN_MOTOR_DIR_B, pot_un * 255.0f);
+            digitalWrite(PIN_MOTOR_DIR_A, LOW);
+        }
+        ultimoPot = pot_un;
+    }
 }
-void defVelMotorEsquerdo(float vel_un) {
-    analogWrite(PIN_MOTOR_ESQ_A, vel_un * 255.0f);
-    digitalWrite(PIN_MOTOR_ESQ_B, LOW);
+void defPotenciaMotorEsquerdo(float pot_un) {
+    static float ultimoPot = 0.0f;
+    if (ultimoPot != pot_un) {
+        if (pot_un >= 0.0f) {
+            analogWrite(PIN_MOTOR_ESQ_A, pot_un * 255.0f);
+            digitalWrite(PIN_MOTOR_ESQ_B, LOW);
+        }
+        else {
+            analogWrite(PIN_MOTOR_ESQ_B, pot_un * 255.0f);
+            digitalWrite(PIN_MOTOR_ESQ_A, LOW);
+        }
+        ultimoPot = pot_un;
+    }
 }
 
 
 void tarefaDegub() {
     static long tempoUltimoPrint_ms = 0;
-
-    if (millis() - tempoUltimoPrint_ms >= 100) {
+    
+    if (millis() - tempoUltimoPrint_ms >= 300) {
         tempoUltimoPrint_ms = millis();
+        
+        //Serial.print(ldrEsq);
+        //Serial.print("; ");
+        //Serial.print(ldrEsqSobreLinha);
+        //Serial.print("; ");
+        //Serial.print(ldrDir);
+        //Serial.print("; ");
+        //Serial.print(ldrDirSobreLinha);
+        //Serial.print("; ");
 
-        Serial.print(ldrEsq);
+        Serial.print(encoderEsq.pegarFrequencia_Hz());
         Serial.print("; ");
-        Serial.print(ldrDir);
+        Serial.print(pidVelEsq.r);
+        Serial.print("; ");
+        Serial.print(pidVelEsq.y);
+        Serial.print("; ");
+        Serial.print(pidVelEsq.c);
         Serial.print("; ");
 
-        Serial.print(ldrEsqSobreLinha);
+        Serial.print(encoderDir.pegarFrequencia_Hz());
         Serial.print("; ");
-        Serial.print(ldrDirSobreLinha);
+        Serial.print(pidVelDir.r);
         Serial.print("; ");
-
-        Serial.print(avancar);
+        Serial.print(pidVelDir.y);
         Serial.print("; ");
-        Serial.print(direcao);
+        Serial.print(pidVelDir.c);
         Serial.print("; ");
         
-        Serial.print(velEsq);
-        Serial.print("; ");
-        Serial.println(velDir);
+        Serial.println();
     }
 }

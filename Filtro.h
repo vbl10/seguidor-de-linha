@@ -36,7 +36,7 @@ public:
         for (int i = TAM / 4, j = TAM -1 -i; i <= j; i++) {
             media += amostras[ordem[i]];
         }
-        media /= (TAM + 1) / 2;
+        media /= TAM - 2 * (TAM/4);
         saida = media;
 
         k = (k + 1) % TAM;

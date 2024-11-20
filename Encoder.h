@@ -26,12 +26,12 @@ public:
             unsigned long dt = tempos[-i] - tempos[-i - 1];
             num += dt * dt;
         }
-        unsigned long dt = millis() - tempos[-1];
+        unsigned long dt = micros() - tempos[-1];
 
         num += (float)dt * (float)dt;
         den += (float)dt;
 
-        return num / den * (float)nFrestas / 1000.0f;
+        return num / den * (float)nFrestas / 1000000.0f;
     }
     static float pegarFrequencia_Hz() {
         return 1.0f / pegarPeriodo_s();
@@ -39,14 +39,14 @@ public:
 public:
     static void interrupt() {
         static constexpr int freqMinimaDetectavel_Hz = 0.05f;   //frequências abaixo desta reiniciam o descarte de amostras
-        static constexpr int nMaxDiscartes = 2;                 //discartar primeiras 2 amostras (geralmente ruins)
-        static constexpr float fMaxFreqDeltaRazao = 10.0f;      //máxima razão de frequência entre duas amostras
+        static constexpr int nMaxDiscartes = 3;                 //discartar n primeiras amostras (geralmente ruins)
+        static constexpr float fMaxFreqDeltaRazao = 1.5f;       //descarta amostras com razão de frequência maior que essa
 
         static unsigned long tp0 = 0, tp1 = 0;
         static char contDiscartes = 0;
         
-        unsigned long tp2 = millis();
-        if (tp2 - tp1 > 1000.0f / (freqMinimaDetectavel_Hz * nFrestas)) {
+        unsigned long tp2 = micros();
+        if (tp2 - tp1 > 1000000.0f / (freqMinimaDetectavel_Hz * nFrestas)) {
             contDiscartes = 0;
         }
         if (contDiscartes < nMaxDiscartes) {

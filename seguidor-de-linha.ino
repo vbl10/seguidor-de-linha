@@ -1,6 +1,6 @@
 #include "Filtro.h"
 #include "ArranjoCircular.h"
-#include "PID.h"
+#include "ControladorPID.h"
 #include "Encoder.h"
 
 #define PIN_MOTOR_ESQ_A 10
@@ -63,8 +63,7 @@ void loop() {
     tarefaSensorUltrassonico();
     tarefaSensoresLDR();
     tarefaControlarMotores();
-    tarefaDegub();
-
+    //tarefaDegub();
 
     {
         static long tempoUltimoToque_ms = 0;
@@ -93,8 +92,6 @@ void loop() {
     }
 
 }
-
-
 
 void tarefaSensorUltrassonico() {
     static constexpr int periodoAmostragem_ms = 30;
@@ -127,11 +124,11 @@ void tarefaSensoresLDR() {
     ldrEsqSobreLinha = ldrEsq < sensibilidadeDeteccaoLinhaEsq_un;
 }
 
-static PID 
-    pidVelEsq(0.2f, 4.0f, 0.1f, 1.0f, 0.0f, 1.0f, 0.0f), 
-    pidVelDir(0.3f, 4.0f, 0.1f, 1.0f, 0.0f, 1.0f, 0.0f);
+static ControladorPID 
+    pidVelEsq(0.10339450472283f, 1.48078026743584f, -0.0234990319860755f, 3.28452251584222, 0.03f), 
+    pidVelDir(0.10339450472283f, 1.48078026743584f, -0.0234990319860755f, 3.28452251584222, 0.03f);
 
-float refEsq = 0.8f, refDir = 0.8f, saidaEsq = 0.0f, saidaDir = 0.0f;
+float refEsq = 0.0f, refDir = 0.0f, saidaEsq = 0.0f, saidaDir = 0.0f, ctrlEsq = 0.0f, ctrlDir = 0.0f;
 
 void tarefaControlarMotores() {
     static unsigned long tp0 = 0;
@@ -142,27 +139,21 @@ void tarefaControlarMotores() {
         saidaEsq = encoderEsq.pegarFrequencia_Hz();
         saidaDir = encoderDir.pegarFrequencia_Hz();
 
-        pidVelDir.atualizar(
-            direcao != DIRECAO::DIREITA && avancar 
+        ctrlDir = pidVelDir.atualizar(
+            (direcao != DIRECAO::DIREITA && avancar 
                 ? velMax_cmps / (2.0f * PI * raioRoda_cm) 
-                : 0.0f, 
-            saidaDir
+                : 0.0f
+            ) - saidaDir
         );
-        pidVelEsq.atualizar(
-            direcao != DIRECAO::ESQUERDA && avancar 
+        ctrlEsq = pidVelEsq.atualizar(
+            (direcao != DIRECAO::ESQUERDA && avancar 
                 ? velMax_cmps / (2.0f * PI * raioRoda_cm) 
-                : 0.0f, 
-            saidaEsq
+                : 0.0f
+            ) - saidaEsq
         );
 
-        defPotenciaMotorDir(
-            direcao != DIRECAO::DIREITA && avancar 
-                ? refDir
-                : 0.0f);//pidVelDir.c);
-        defPotenciaMotorEsq(
-            direcao != DIRECAO::ESQUERDA && avancar 
-                ? refEsq
-                : 0.0f);//pidVelEsq.c);
+        defPotenciaMotorDir(ctrlEsq);
+        defPotenciaMotorEsq(ctrlDir);
 
         refEsq = refDir = sin((float)millis() / 3000.0f * 2.0f * PI) * 0.5f + 0.5f;
     }

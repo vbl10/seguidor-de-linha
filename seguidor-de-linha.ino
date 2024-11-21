@@ -154,8 +154,6 @@ void tarefaControlarMotores() {
 
         defPotenciaMotorDir(ctrlEsq);
         defPotenciaMotorEsq(ctrlDir);
-
-        refEsq = refDir = sin((float)millis() / 3000.0f * 2.0f * PI) * 0.5f + 0.5f;
     }
 }
 void defPotenciaMotorDir(float pot_un) {

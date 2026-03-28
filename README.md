@@ -88,7 +88,3 @@ Essas ferramentas permitiram:
 - Uso de sensores infravermelhos de maior precisão
 - Integração com visão computacional
 - Mapeamento de ambiente e navegação autônoma avançada
-
----
-
-## 📁 Estrutura do Repositório (exemplo)

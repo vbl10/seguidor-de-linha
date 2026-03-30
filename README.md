@@ -32,7 +32,7 @@ O sistema integra sensores, atuadores e técnicas de **controle digital**, garan
 - Motores DC com controle de velocidade via modulação PWM
 
 ### Plataforma de Controle
-- Microcontrolador (ex: Arduino ou equivalente)
+- Microcontrolador Arduino
 
 ---
 
